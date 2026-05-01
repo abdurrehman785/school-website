@@ -32,6 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# duplicate assets at repo root (source of truth: /public)
+/coverphoto.jpg
+/campusphoto.jpg
+/logo.jpg
+/principalphoto.jpg
 
 # vercel
 .vercel
