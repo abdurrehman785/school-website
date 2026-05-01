@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { appendContactRow, isGoogleSheetsConfigured } from "@/lib/google-sheets";
+import { school } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -19,8 +20,14 @@ function cleanStr(v: unknown, max: number): string {
 
 export async function POST(request: Request) {
   if (!isGoogleSheetsConfigured()) {
+    console.error(
+      "[contact] Google Sheets not configured. On Vercel add GOOGLE_SHEETS_SPREADSHEET_ID + GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 (or GOOGLE_SERVICE_ACCOUNT_JSON / EMAIL+PRIVATE_KEY), then redeploy."
+    );
     return NextResponse.json(
-      { ok: false, error: "Server is not configured to save enquiries. Contact the site administrator." },
+      {
+        ok: false,
+        error: `We could not save your enquiry online yet. Email ${school.email} or phone ${school.phone}.`,
+      },
       { status: 503 }
     );
   }

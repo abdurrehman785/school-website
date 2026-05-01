@@ -8,19 +8,72 @@ export type ContactRow = {
   message: string;
 };
 
-function getSheetsConfig() {
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const rawKey = process.env.GOOGLE_PRIVATE_KEY;
-  const sheetTab = process.env.GOOGLE_SHEETS_TAB ?? "Sheet1";
+type ServiceAccountCreds = {
+  clientEmail: string;
+  privateKey: string;
+};
 
-  if (!spreadsheetId || !clientEmail || !rawKey) {
+function normalizePrivateKey(key: string): string {
+  const k = key.trim();
+  if (k.includes("\\n")) return k.replace(/\\n/g, "\n");
+  return k;
+}
+
+function credsFromJson(value: unknown): ServiceAccountCreds | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  const clientEmail = o.client_email;
+  const privateKey = o.private_key;
+  if (typeof clientEmail !== "string" || typeof privateKey !== "string") return null;
+  if (!clientEmail.includes("@") || !privateKey.includes("BEGIN")) return null;
+  return { clientEmail, privateKey: normalizePrivateKey(privateKey) };
+}
+
+function resolveServiceAccount(): ServiceAccountCreds | null {
+  /** Best for Vercel: paste base64-encoded full service account JSON (one line). */
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64?.trim();
+  if (b64) {
+    try {
+      const decoded = Buffer.from(b64, "base64").toString("utf8");
+      const json = JSON.parse(decoded);
+      const c = credsFromJson(json);
+      if (c) return c;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  /** Single-line/minified JSON in one env var (Vercel-friendly). */
+  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+  if (rawJson) {
+    try {
+      const json = JSON.parse(rawJson);
+      const c = credsFromJson(json);
+      if (c) return c;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY?.trim();
+  if (clientEmail && rawKey) {
+    return { clientEmail, privateKey: normalizePrivateKey(rawKey) };
+  }
+
+  return null;
+}
+
+function getSheetsConfig() {
+  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim();
+  const sheetTab = process.env.GOOGLE_SHEETS_TAB?.trim() || "Sheet1";
+  const sa = resolveServiceAccount();
+
+  if (!spreadsheetId || !sa) {
     return null;
   }
 
-  const privateKey = rawKey.includes("\\n") ? rawKey.replace(/\\n/g, "\n") : rawKey;
-
-  return { spreadsheetId, clientEmail, privateKey, sheetTab };
+  return { spreadsheetId, ...sa, sheetTab };
 }
 
 export function isGoogleSheetsConfigured(): boolean {
@@ -30,7 +83,9 @@ export function isGoogleSheetsConfigured(): boolean {
 export async function appendContactRow(row: ContactRow): Promise<void> {
   const cfg = getSheetsConfig();
   if (!cfg) {
-    throw new Error("GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY are not set.");
+    throw new Error(
+      "Missing GOOGLE_SHEETS_SPREADSHEET_ID and/or service account credentials (GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, or EMAIL+PRIVATE_KEY)."
+    );
   }
 
   const auth = new google.auth.JWT({

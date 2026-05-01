@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["next-sanity"],
+  /** Avoid bundling issues with googleapis on Vercel serverless. */
+  serverExternalPackages: ["googleapis"],
   images: {
     remotePatterns: [
       {
